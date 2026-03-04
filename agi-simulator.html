@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AGI Timeline Simulator</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0c0e1a; --surface: #12152a; --card: #1a1f38; --border: #252a47;
+      --blue: #4f8ef7; --blue-dim: #2a4a8a; --orange: #f97316; --green: #34d399;
+      --red: #f87171; --yellow: #fbbf24; --purple: #a78bfa; --teal: #2dd4bf;
+      --text: #e2e8f0; --muted: #8892aa; --subtle: #4a5280;
+    }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; font-size: 14px; line-height: 1.5; }
+
+    header { padding: 14px 26px; border-bottom: 1px solid var(--border); background: var(--surface); display: flex; align-items: center; gap: 14px; }
+    .logo { font-size: 20px; }
+    header h1 { font-size: 15px; font-weight: 700; letter-spacing: -.3px; }
+    header p { font-size: 11px; color: var(--muted); margin-top: 1px; }
+    .badge-preview { margin-left: auto; background: var(--blue-dim); color: var(--blue); font-size: 10px; font-weight: 700; padding: 3px 10px; border-radius: 999px; letter-spacing: .5px; }
+
+    .app { display: grid; grid-template-columns: 370px 1fr; min-height: calc(100vh - 51px); }
+
+    aside { background: var(--surface); border-right: 1px solid var(--border); overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+    .section-label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: var(--subtle); text-transform: uppercase; margin-bottom: 7px; }
+
+    /* Presets */
+    .preset-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .preset-btn { background: var(--card); border: 1px solid var(--border); border-radius: 7px; color: var(--text); cursor: pointer; padding: 7px 9px; font-size: 11.5px; font-weight: 500; text-align: left; transition: all .15s; }
+    .preset-btn:hover { border-color: var(--blue); background: #1e2442; }
+    .preset-btn.active { border-color: var(--blue); background: var(--blue-dim); color: #a8c7ff; }
+    .preset-btn .preset-icon { font-size: 13px; display: block; margin-bottom: 2px; }
+    .preset-btn.asis { border-color: #d97706; background: rgba(217,119,6,0.08); grid-column: 1/-1; display: flex; align-items: center; gap: 10px; }
+    .preset-btn.asis .preset-icon { display: inline; margin-bottom: 0; }
+    .preset-btn.asis:hover { border-color: #f59e0b; background: rgba(245,158,11,0.14); }
+    .preset-btn.asis.active { border-color: #f59e0b; background: rgba(245,158,11,0.17); color: #fde68a; }
+    .preset-btn.asis .asis-meta { font-size: 10px; color: var(--muted); font-weight: 400; margin-left: auto; white-space: nowrap; }
+    #asis-rationale { background: rgba(217,119,6,0.07); border: 1px solid rgba(217,119,6,0.25); border-radius: 7px; padding: 9px 12px; display: none; margin-top: 2px; }
+    #asis-rationale.visible { display: block; }
+    #asis-rationale .rat-title { font-size: 9.5px; font-weight: 700; color: #d97706; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 6px; }
+    #asis-rationale .rat-row { font-size: 10px; color: #b0bbd4; line-height: 1.5; display: flex; gap: 5px; margin-bottom: 2px; }
+    #asis-rationale .rname { color: #e2e8f0; font-weight: 600; min-width: 138px; flex-shrink: 0; }
+    #asis-rationale .rval { color: #f59e0b; font-weight: 700; min-width: 24px; flex-shrink: 0; }
+
+    /* Variable group headers */
+    .var-group-header { font-size: 9px; font-weight: 700; letter-spacing: 1.2px; color: var(--blue); text-transform: uppercase; margin: 8px 0 5px; padding-left: 2px; border-left: 2px solid var(--blue); padding-left: 6px; }
+
+    /* Variable sliders */
+    .var-list-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+    .reset-weights-btn { font-size: 10px; color: var(--orange); background: none; border: none; cursor: pointer; padding: 2px 5px; border-radius: 4px; }
+    .reset-weights-btn:hover { background: rgba(249,115,22,0.1); }
+    .var-list { display: flex; flex-direction: column; gap: 10px; }
+    .var-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px; gap: 5px; }
+    .var-name { font-size: 11.5px; font-weight: 600; flex: 1; }
+    .var-val { font-size: 10.5px; color: var(--orange); font-weight: 700; margin-left: 2px; }
+    .weight-group { display: flex; align-items: center; gap: 3px; flex-shrink: 0; }
+    .weight-label { font-size: 9px; color: var(--subtle); text-transform: uppercase; }
+    .weight-input { width: 34px; background: rgba(79,142,247,0.1); border: 1px solid var(--blue-dim); border-radius: 4px; color: var(--blue); font-size: 10.5px; font-weight: 700; padding: 2px 3px; text-align: center; outline: none; }
+    .weight-input:focus { border-color: var(--blue); }
+    .weight-input.modified { border-color: var(--orange); color: var(--orange); background: rgba(249,115,22,0.1); }
+    input[type=range] { width: 100%; height: 4px; -webkit-appearance: none; background: var(--border); border-radius: 4px; outline: none; cursor: pointer; }
+    input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%; background: var(--blue); border: 2px solid #fff; cursor: grab; }
+    .var-labels { display: grid; grid-template-columns: 1fr auto 1fr; gap: 3px; margin-top: 3px; align-items: start; }
+    .var-labels .lbl-left { font-size: 8.5px; color: var(--subtle); }
+    .var-labels .lbl-right { font-size: 8.5px; color: var(--subtle); text-align: right; }
+    .var-qual-label { font-size: 8.5px; color: var(--blue); font-weight: 600; text-align: center; white-space: nowrap; padding: 0 3px; }
+
+    /* Settings + Run */
+    .settings-row { display: flex; align-items: center; gap: 10px; margin-bottom: 7px; }
+    .settings-row label { font-size: 12px; color: var(--muted); min-width: 90px; }
+    select { background: var(--card); border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 5px 9px; font-size: 12px; cursor: pointer; outline: none; }
+    #run-btn { background: var(--blue); border: none; border-radius: 10px; color: #fff; cursor: pointer; font-size: 14px; font-weight: 700; padding: 11px; transition: all .15s; width: 100%; }
+    #run-btn:hover { background: #6aa3ff; transform: translateY(-1px); box-shadow: 0 4px 18px rgba(79,142,247,.35); }
+    #run-btn:disabled { background: var(--border); color: var(--subtle); cursor: not-allowed; transform: none; box-shadow: none; }
+
+    /* Main */
+    main { overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+
+    /* Stats */
+    .stats-bar.single { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; }
+    .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 11px 13px; }
+    .stat-card .slabel { font-size: 9.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+    .stat-card .svalue { font-size: 25px; font-weight: 800; margin-top: 2px; letter-spacing: -1px; }
+    .stat-card .ssub { font-size: 10px; color: var(--muted); margin-top: 1px; }
+    .stat-card.primary .svalue { color: var(--blue); }
+    .stat-card.fast .svalue { color: var(--green); }
+    .stat-card.slow .svalue { color: var(--yellow); }
+    .stat-card.spread .svalue { color: var(--orange); }
+
+    /* Post-AGI outcome card */
+    .post-agi-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+    .post-agi-card .pag-title { font-size: 11px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+    .post-agi-card .pag-sub { font-size: 10.5px; color: var(--muted); margin-bottom: 12px; }
+    .outcome-bars { display: flex; flex-direction: column; gap: 8px; }
+    .outcome-bar-row { display: flex; align-items: center; gap: 10px; }
+    .bar-label { font-size: 11px; color: var(--muted); min-width: 168px; }
+    .bar-track { flex: 1; height: 12px; background: rgba(255,255,255,0.06); border-radius: 6px; overflow: hidden; }
+    .bar-fill { height: 100%; border-radius: 6px; transition: width .6s ease; }
+    .bar-fill.success { background: linear-gradient(90deg, #059669, #34d399); }
+    .bar-fill.recoverable { background: linear-gradient(90deg, #b45309, #fbbf24); }
+    .bar-fill.catastrophe { background: linear-gradient(90deg, #991b1b, #f87171); }
+    .bar-pct { font-size: 12px; font-weight: 800; min-width: 38px; text-align: right; }
+    .bar-pct.success { color: var(--green); }
+    .bar-pct.recoverable { color: var(--yellow); }
+    .bar-pct.catastrophe { color: var(--red); }
+    .pag-note { font-size: 10px; color: var(--subtle); margin-top: 10px; }
+
+    /* Compare stats */
+    .cmp-stats { background: var(--card); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+    .cmp-header { display: grid; grid-template-columns: 150px 1fr 1fr; border-bottom: 1px solid var(--border); }
+    .cmp-header > div { padding: 9px 13px; font-size: 11px; font-weight: 700; }
+    .cmp-header .col-a { color: var(--muted); font-size: 10px; text-transform: uppercase; }
+    .cmp-header .col-b { color: #94c4ff; border-left: 1px solid var(--border); }
+    .cmp-header .col-c { color: #c4b5fd; border-left: 1px solid var(--border); }
+    .cmp-row { display: grid; grid-template-columns: 150px 1fr 1fr; border-bottom: 1px solid rgba(255,255,255,0.04); }
+    .cmp-row:last-child { border-bottom: none; }
+    .cmp-row > div { padding: 7px 13px; font-size: 12px; }
+    .cmp-row .metric { color: var(--muted); font-size: 11px; }
+    .cmp-row .val-b { color: #94c4ff; font-weight: 700; border-left: 1px solid var(--border); }
+    .cmp-row .val-c { color: #c4b5fd; font-weight: 700; border-left: 1px solid var(--border); }
+    .cmp-row .cmp-section { font-size: 9.5px; font-weight: 700; color: var(--subtle); letter-spacing: 1px; text-transform: uppercase; background: rgba(255,255,255,0.02); }
+    .delta { font-size: 10px; margin-left: 4px; font-weight: 400; }
+    .delta.faster { color: var(--green); }
+    .delta.slower { color: var(--red); }
+
+    /* Comparison bar */
+    .compare-bar { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 11px 14px; display: flex; align-items: center; gap: 10px; }
+    .compare-bar .cb-info { flex: 1; }
+    .compare-bar .cb-title { font-size: 12px; font-weight: 700; color: var(--purple); }
+    .compare-bar .cb-sub { font-size: 11px; color: var(--muted); margin-top: 1px; }
+    .cb-btn { background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--muted); cursor: pointer; font-size: 11px; padding: 5px 10px; transition: all .15s; white-space: nowrap; }
+    .cb-btn.pin { border-color: var(--purple); color: var(--purple); background: rgba(167,139,250,0.08); }
+    .cb-btn.pin:hover { background: rgba(167,139,250,0.16); }
+    .cb-btn.clear { border-color: var(--red); color: var(--red); }
+    .cb-btn.clear:hover { background: rgba(248,113,113,0.1); }
+
+    /* Outcome row */
+    .outcome-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .outcome-label { font-size: 11px; color: var(--muted); }
+    .outcome-pill { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 999px; }
+    .outcome-race { background: rgba(248,113,113,.15); color: var(--red); border: 1px solid rgba(248,113,113,.3); }
+    .outcome-safe { background: rgba(52,211,153,.15); color: var(--green); border: 1px solid rgba(52,211,153,.3); }
+    .outcome-delay { background: rgba(251,191,36,.15); color: var(--yellow); border: 1px solid rgba(251,191,36,.3); }
+    .outcome-surge { background: rgba(79,142,247,.15); color: var(--blue); border: 1px solid rgba(79,142,247,.3); }
+    .outcome-stagnate { background: rgba(148,163,184,.15); color: var(--muted); border: 1px solid rgba(148,163,184,.3); }
+
+    /* Chart */
+    .chart-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+    .chart-card h3 { font-size: 12px; font-weight: 600; margin-bottom: 3px; }
+    .chart-card .chart-sub { font-size: 11px; color: var(--muted); margin-bottom: 12px; }
+    .chart-wrap { position: relative; height: 210px; }
+    .chart-legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 9px; }
+    .legend-item { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 5px; }
+    .legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+    /* Story card */
+    .story-card { background: linear-gradient(135deg, #12152a 0%, #1a1228 100%); border: 1px solid #2d2547; border-radius: 12px; padding: 18px 20px; }
+    .story-card h3 { font-size: 11px; font-weight: 700; color: var(--purple); letter-spacing: .5px; text-transform: uppercase; margin-bottom: 12px; }
+    .story-card p { color: #c8c0de; font-size: 13px; line-height: 1.8; margin-bottom: 12px; }
+    .story-card p:last-child { margin-bottom: 0; }
+    .story-card strong { color: #e8e0f8; }
+    .story-card em { color: var(--purple); font-style: normal; font-weight: 500; }
+
+    /* Narrative card */
+    .narrative-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; }
+    .narrative-card h3 { font-size: 11px; font-weight: 700; color: var(--blue); letter-spacing: .5px; text-transform: uppercase; margin-bottom: 12px; }
+    .narrative-card p { color: #c0c8e0; font-size: 13px; line-height: 1.75; margin-bottom: 12px; }
+    .narrative-card p:last-child { margin-bottom: 0; }
+    .narrative-card strong { color: var(--text); font-weight: 600; }
+
+    /* Empty state */
+    .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 60px 40px; background: var(--card); border: 1px dashed var(--border); border-radius: 12px; text-align: center; }
+    .empty-state .icon { font-size: 36px; opacity: .5; }
+    .empty-state h3 { font-size: 15px; font-weight: 600; }
+    .empty-state p { font-size: 13px; color: var(--muted); max-width: 360px; }
+  </style>
+</head>
+<body>
+<header>
+  <div class="logo">🧠</div>
+  <div>
+    <h1>AGI Timeline Simulator</h1>
+    <p>Monte Carlo simulation · Editable weights · Scenario comparison · Post-AGI outcome modeling</p>
+  </div>
+  <div class="badge-preview">RESEARCH PREVIEW</div>
+</header>
+
+<div class="app">
+  <aside>
+    <div>
+      <div class="section-label">Scenario Presets</div>
+      <div class="preset-grid" id="preset-grid"></div>
+    </div>
+    <div>
+      <div class="var-list-header">
+        <div class="section-label" style="margin-bottom:0">Variables &amp; Weights</div>
+        <button class="reset-weights-btn" id="reset-weights-btn">↩ Reset weights</button>
+      </div>
+      <div class="var-list" id="var-list"></div>
+    </div>
+    <div>
+      <div class="section-label">Run Settings</div>
+      <div class="settings-row">
+        <label>Simulation runs</label>
+        <select id="num-runs">
+          <option value="1000">1,000 (fast)</option>
+          <option value="5000" selected>5,000</option>
+          <option value="10000">10,000 (precise)</option>
+        </select>
+      </div>
+    </div>
+    <button id="run-btn">▶ Run Simulation</button>
+  </aside>
+
+  <main id="main-panel">
+    <div class="empty-state">
+      <div class="icon">📡</div>
+      <h3>Configure and run your simulation</h3>
+      <p>Select a preset, adjust variable values and weights, then run to generate a probability distribution, post-AGI outcome model, and scenario narrative.</p>
+    </div>
+  </main>
+</div>
+
+<script>
+// ══════════════════════════════════════════════
+// VARIABLES — 13 total
+// ══════════════════════════════════════════════
+const VAR_GROUPS = [
+  { label: 'Capability', color: '--blue' },
+  { label: 'Environment', color: '--teal' },
+  { label: 'Safety', color: '--green' },
+  { label: 'Other', color: '--subtle' },
+];
+
+const VARIABLES = [
+  // Capability
+  { id: 'aiLoop', name: 'AI-Accelerated Research', defaultWeight: 18, group: 0,
+    leftLabel: 'Not yet triggered', rightLabel: 'Fully recursive',
+    qualLabels: ['Not yet triggered', 'AI assists research', 'Substantial AI input', 'Near loop threshold', 'Fully recursive loop'] },
+  { id: 'algo', name: 'Algorithmic Efficiency', defaultWeight: 12, group: 0,
+    leftLabel: 'Diminishing returns', rightLabel: 'Rapid gains',
+    qualLabels: ['Diminishing returns', 'Slow incremental gains', 'Steady progress', 'Major efficiency wins', 'Rapid gains'] },
+  { id: 'compute', name: 'Compute Scaling', defaultWeight: 9, group: 0,
+    leftLabel: 'Stagnation', rightLabel: 'Exponential growth',
+    qualLabels: ['Severe stagnation', 'Constrained growth', 'Steady scaling', 'Strong build-out', 'Exponential scaling'] },
+  { id: 'takeoff', name: 'Takeoff Speed', defaultWeight: 9, group: 0,
+    leftLabel: 'Slow / gradual', rightLabel: 'Fast / discontinuous',
+    qualLabels: ['Slow, gradual', 'Mostly gradual', 'Moderate pace', 'Rapid acceleration', 'Discontinuous jump'] },
+  // Environment
+  { id: 'geo', name: 'US-China Geopolitics', defaultWeight: 15, group: 1,
+    leftLabel: 'Full cooperation', rightLabel: 'Intense competition',
+    qualLabels: ['Active cooperation', 'Mostly cooperative', 'Competitive rivalry', 'High competition', 'Full-blown race'] },
+  { id: 'concentration', name: 'Lab Concentration', defaultWeight: 6, group: 1,
+    leftLabel: 'Proliferated / open-source', rightLabel: '2–3 dominant labs',
+    qualLabels: ['Wide proliferation', 'Many active labs', 'Some consolidation', 'A few leaders', 'Oligopoly (2–3 labs)'] },
+  { id: 'reg', name: 'Regulatory Environment', defaultWeight: 5, group: 1,
+    leftLabel: 'No restrictions', rightLabel: 'Heavy regulation',
+    qualLabels: ['No restrictions', 'Minimal rules', 'Moderate oversight', 'Strong regulation', 'Very heavy-handed'] },
+  { id: 'energy', name: 'Energy & Infrastructure', defaultWeight: 4, group: 1,
+    leftLabel: 'Severe bottlenecks', rightLabel: 'Fully solved',
+    qualLabels: ['Severe bottlenecks', 'Major constraints', 'Partially resolved', 'Mostly solved', 'Fully solved'] },
+  { id: 'politics', name: 'Political Stability', defaultWeight: 1, group: 1,
+    leftLabel: 'High instability', rightLabel: 'High stability',
+    qualLabels: ['High instability', 'Significant tensions', 'Moderate stability', 'Generally stable', 'Very stable'] },
+  // Safety
+  { id: 'align_theory', name: 'Alignment Theory Maturity', defaultWeight: 8, group: 2,
+    leftLabel: 'No credible approach', rightLabel: 'Scalable solution exists',
+    qualLabels: ['No credible approach', 'Early frameworks only', 'Active research', 'Promising methods', 'Scalable solution'] },
+  { id: 'deploy_safety', name: 'Deployment Safety Practices', defaultWeight: 7, group: 2,
+    leftLabel: 'Capabilities outpace safety', rightLabel: 'Safety leads deployment',
+    qualLabels: ['Capabilities race ahead', 'Minimal safety culture', 'Basic practices', 'Safety-conscious labs', 'Safety leads'] },
+  // Other
+  { id: 'def', name: 'AGI Definition Adopted', defaultWeight: 5, group: 3,
+    leftLabel: 'Narrow (economic tasks)', rightLabel: 'Broad (recursive self-improvement)',
+    qualLabels: ['Narrow: economic tasks', 'Task-specific criteria', 'General competence bar', 'Broad autonomy needed', 'Recursive self-improvement'] },
+  { id: 'blackSwan', name: 'Black Swan Breakthroughs', defaultWeight: 1, group: 3,
+    leftLabel: 'Low probability', rightLabel: 'High probability',
+    qualLabels: ['Very unlikely', 'Below-average chance', 'Possible', 'Elevated probability', 'Highly likely'] },
+];
+
+const DEFAULT_WEIGHTS = Object.fromEntries(VARIABLES.map(v => [v.id, v.defaultWeight]));
+const VARS_BY_ID = Object.fromEntries(VARIABLES.map(v => [v.id, v]));
+
+function getQualLabel(id, val) {
+  const v = VARS_BY_ID[id];
+  if (!v?.qualLabels) return '';
+  const idx = val <= 20 ? 0 : val <= 40 ? 1 : val <= 60 ? 2 : val <= 80 ? 3 : 4;
+  return v.qualLabels[idx];
+}
+
+// ══════════════════════════════════════════════
+// PRESETS
+// ══════════════════════════════════════════════
+const ASIS_RATIONALE = [
+  { id: 'aiLoop',        val: 35, note: 'AI assists research tasks; not yet writing its own training code at scale.' },
+  { id: 'algo',         val: 70, note: 'Rapid gains — DeepSeek R1 matched GPT-4 at ~1/50th training cost.' },
+  { id: 'compute',      val: 62, note: 'Still scaling (Stargate, Blackwell) but power-grid constrained.' },
+  { id: 'takeoff',      val: 42, note: 'Uncertain; capability curve suggests moderate speed, could accelerate.' },
+  { id: 'geo',          val: 73, note: 'Intense US-China competition: chip export controls, DeepSeek R1 shock.' },
+  { id: 'concentration',val: 62, note: '3-4 dominant labs (OpenAI, Anthropic, Google, Meta) but open-source rising.' },
+  { id: 'reg',          val: 32, note: 'EU AI Act most substantial; US mostly executive orders, little binding law.' },
+  { id: 'energy',       val: 42, note: 'Real bottlenecks: data-center power straining grids; nuclear deals signed.' },
+  { id: 'politics',     val: 50, note: 'New US administration (2025), China economic headwinds — moderate stability.' },
+  { id: 'align_theory', val: 30, note: 'Interpretability and alignment research active — no credible scalable solution.' },
+  { id: 'deploy_safety',val: 38, note: 'Labs have safety teams and evals, but practices inconsistent; capabilities outpace.' },
+  { id: 'def',          val: 38, note: 'Field uses narrow benchmark definitions; recursive threshold not yet standard.' },
+  { id: 'blackSwan',    val: 52, note: 'Elevated — ChatGPT, o1, DeepSeek R1 were all paradigm surprises within 3 years.' },
+];
+
+const PRESETS = [
+  { name: 'As Is — Feb 2026', icon: '📍', asis: true,
+    values: Object.fromEntries(ASIS_RATIONALE.map(r => [r.id, r.val])) },
+  { name: 'Cautious Progress', icon: '🛡️',
+    values: { aiLoop:35, algo:45, compute:48, takeoff:28, geo:25, concentration:55, reg:62, energy:55, politics:70, align_theory:72, deploy_safety:78, def:55, blackSwan:15 } },
+  { name: 'Race to AGI', icon: '🏁',
+    values: { aiLoop:65, algo:60, compute:65, takeoff:68, geo:80, concentration:58, reg:22, energy:55, politics:50, align_theory:22, deploy_safety:18, def:40, blackSwan:50 } },
+  { name: 'Regulatory Slowdown', icon: '⚖️',
+    values: { aiLoop:22, algo:42, compute:45, takeoff:25, geo:32, concentration:52, reg:90, energy:42, politics:58, align_theory:75, deploy_safety:82, def:65, blackSwan:10 } },
+  { name: 'Breakthrough Surge', icon: '⚡',
+    values: { aiLoop:80, algo:85, compute:85, takeoff:85, geo:62, concentration:65, reg:28, energy:75, politics:68, align_theory:35, deploy_safety:38, def:32, blackSwan:82 } },
+  { name: 'Tech Stagnation', icon: '🧊',
+    values: { aiLoop:15, algo:22, compute:18, takeoff:20, geo:38, concentration:48, reg:72, energy:28, politics:38, align_theory:78, deploy_safety:75, def:78, blackSwan:10 } },
+];
+
+// ══════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════
+let state = {};
+VARIABLES.forEach(v => { state[v.id] = 50; });
+let userWeights = { ...DEFAULT_WEIGHTS };
+let activePreset = null;
+let chart = null;
+let pinnedScenario = null;
+
+// ══════════════════════════════════════════════
+// MATH
+// ══════════════════════════════════════════════
+function lerp(a, b, t) { return a + t * (b - a); }
+function normalRandom(mean = 0, std = 1) {
+  let u = 0, v = 0;
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
+  return mean + std * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+function poissonRandom(lambda) {
+  if (lambda <= 0) return 0;
+  const L = Math.exp(-Math.min(lambda, 20));
+  let k = 0, p = 1;
+  do { k++; p *= Math.random(); } while (p > L);
+  return k - 1;
+}
+function ws(id) { return userWeights[id] / DEFAULT_WEIGHTS[id]; }
+
+// ══════════════════════════════════════════════
+// SIMULATION ENGINE
+// ══════════════════════════════════════════════
+function computeYearsToAGI(p) {
+  const t = {};
+  Object.keys(p).forEach(k => { t[k] = p[k] / 100; });
+  const BASE = 2.5;
+
+  const computeEffect   = lerp(2, -2, t.compute)   * ws('compute');
+  const algoEffect      = lerp(1.5, -2, t.algo)    * ws('algo');
+  const geoEffect       = lerp(2, -2, t.geo)        * ws('geo');
+  const regEffect       = lerp(-0.3, 4, t.reg)      * ws('reg');
+  const energyEffect    = lerp(3, -0.5, t.energy)   * ws('energy');
+  const defEffect       = lerp(-2, 6, t.def)        * ws('def');
+  const politicsEffect  = lerp(1, -0.3, t.politics) * ws('politics');
+
+  // AI loop: threshold at 0.6, quadratic beyond
+  let aiLoopEffect;
+  if (t.aiLoop < 0.6) {
+    aiLoopEffect = lerp(0, -0.3, t.aiLoop / 0.6) * ws('aiLoop');
+  } else {
+    const n = (t.aiLoop - 0.6) / 0.4;
+    aiLoopEffect = lerp(-0.3, -6, n * n) * ws('aiLoop');
+  }
+
+  // Takeoff: fast = slightly faster arrival; primary role is post-AGI risk
+  const takeoffEffect = lerp(0.5, -1.0, t.takeoff) * ws('takeoff');
+
+  // Concentration: proliferation = more actors = faster; concentrated = slightly slower
+  const concEffect = lerp(-1.0, 0.5, t.concentration) * ws('concentration');
+
+  // Alignment theory: high = very slightly slower (more caution)
+  const alignEffect = lerp(-0.15, 1.4, t.align_theory) * ws('align_theory');
+
+  // Deployment safety: high = slightly slower (process overhead)
+  const deployEffect = lerp(-0.1, 0.9, t.deploy_safety) * ws('deploy_safety');
+
+  // Black swan: each event = -1.5 to -4 yrs
+  const numEvents = poissonRandom(t.blackSwan * 0.35 * ws('blackSwan'));
+  let bsEffect = 0;
+  for (let i = 0; i < numEvents; i++) bsEffect -= 1.5 + Math.random() * 2.5;
+
+  // Takeoff affects uncertainty spread: fast = narrower noise
+  const noiseScale = lerp(1.25, 0.75, t.takeoff);
+  const noise = normalRandom(0, 1.35 * noiseScale);
+
+  const total = BASE + computeEffect + algoEffect + aiLoopEffect + geoEffect
+    + regEffect + energyEffect + defEffect + politicsEffect + takeoffEffect
+    + concEffect + alignEffect + deployEffect + bsEffect + noise;
+  return Math.max(0.25, Math.min(60, total));
+}
+
+// ══════════════════════════════════════════════
+// POST-AGI OUTCOME MODEL
+// ══════════════════════════════════════════════
+function computePostAGIOutcomes(p) {
+  let pCat = 0.08;
+
+  // Alignment theory: strongest lever on catastrophe
+  pCat += lerp(0.15, -0.07, p.align_theory / 100);
+  // Deployment safety: second lever
+  pCat += lerp(0.12, -0.06, p.deploy_safety / 100);
+  // Takeoff speed: fast = less response time = more dangerous
+  pCat += lerp(-0.04, 0.13, p.takeoff / 100);
+  // Geopolitics: race = corners cut, less coordination
+  pCat += lerp(-0.03, 0.11, p.geo / 100);
+  // Lab concentration: proliferated (low) = harder to govern
+  pCat += lerp(0.07, -0.04, p.concentration / 100);
+  // Regulation: modest safety benefit
+  pCat += lerp(0.02, -0.05, p.reg / 100);
+  // AI loop triggered before alignment solved: extra risk
+  if (p.aiLoop >= 70 && p.align_theory < 50) pCat += 0.10;
+  // Dangerous deployment before AGI arrives (capabilities outpace safety practices)
+  if (p.deploy_safety < 30 && p.algo >= 65) pCat += 0.06;
+
+  pCat = Math.max(0.02, Math.min(0.88, pCat));
+
+  // Recoverable misalignment: bad but fixable
+  let pRec = 0.32;
+  pRec += lerp(0.10, -0.12, p.align_theory / 100);
+  pRec += lerp(0.05, -0.08, p.deploy_safety / 100);
+  pRec = Math.max(0.03, Math.min(0.65, pRec));
+
+  if (pCat + pRec > 0.97) pRec = 0.97 - pCat;
+  const pSuccess = Math.max(0.01, 1 - pCat - pRec);
+
+  return { catastrophe: pCat, recoverable: pRec, success: pSuccess };
+}
+
+function computeStats(sorted) {
+  const n = sorted.length;
+  const median = n % 2 === 0 ? (sorted[n/2-1]+sorted[n/2])/2 : sorted[Math.floor(n/2)];
+  return {
+    median,
+    p10: sorted[Math.floor(n*0.10)],
+    p90: sorted[Math.floor(n*0.90)],
+    pct2030: sorted.filter(y=>y<2030).length/n*100,
+    pct2035: sorted.filter(y=>y<2035).length/n*100,
+    pct2040: sorted.filter(y=>y<2040).length/n*100,
+  };
+}
+
+function classifyOutcome(p) {
+  if (p.compute < 30 && p.algo < 30 && p.aiLoop < 20) return 'stagnate';
+  if (p.takeoff >= 75 && p.aiLoop >= 68) return 'surge';
+  if (p.aiLoop >= 72 && p.blackSwan >= 65) return 'surge';
+  if (p.geo >= 72 && p.deploy_safety < 35) return 'race';
+  if (p.reg >= 78) return 'delay';
+  return 'safe';
+}
+
+// ══════════════════════════════════════════════
+// BUILD UI
+// ══════════════════════════════════════════════
+function buildUI() {
+  const presetGrid = document.getElementById('preset-grid');
+  PRESETS.forEach((p, i) => {
+    const btn = document.createElement('button');
+    btn.className = p.asis ? 'preset-btn asis' : 'preset-btn';
+    btn.innerHTML = p.asis
+      ? `<span class="preset-icon">${p.icon}</span>${p.name}<span class="asis-meta">Current world state</span>`
+      : `<span class="preset-icon">${p.icon}</span>${p.name}`;
+    btn.addEventListener('click', () => applyPreset(i, btn));
+    presetGrid.appendChild(btn);
+  });
+
+  const rationalePanel = document.createElement('div');
+  rationalePanel.id = 'asis-rationale';
+  rationalePanel.innerHTML = `<div class="rat-title">📊 Real-world basis — Feb 2026</div>` +
+    ASIS_RATIONALE.map(r => {
+      const v = VARIABLES.find(v => v.id === r.id);
+      return `<div class="rat-row"><span class="rname">${v?.name ?? r.id}</span><span class="rval">${r.val}</span><span>${r.note}</span></div>`;
+    }).join('');
+  presetGrid.parentNode.insertBefore(rationalePanel, presetGrid.nextSibling);
+
+  const varList = document.getElementById('var-list');
+  let lastGroup = -1;
+  VARIABLES.forEach(v => {
+    if (v.group !== lastGroup) {
+      const gh = document.createElement('div');
+      gh.className = 'var-group-header';
+      gh.textContent = VAR_GROUPS[v.group].label;
+      varList.appendChild(gh);
+      lastGroup = v.group;
+    }
+    const item = document.createElement('div');
+    item.className = 'var-item';
+    item.innerHTML = `
+      <div class="var-header">
+        <span class="var-name">${v.name}<span class="var-val" id="val-${v.id}">50</span></span>
+        <div class="weight-group">
+          <span class="weight-label">wt</span>
+          <input type="number" class="weight-input" id="wt-${v.id}" min="0" max="50" value="${v.defaultWeight}">
+        </div>
+      </div>
+      <input type="range" id="slider-${v.id}" min="0" max="100" value="50">
+      <div class="var-labels">
+        <span class="lbl-left">${v.leftLabel}</span>
+        <span class="var-qual-label" id="qual-${v.id}">${getQualLabel(v.id, 50)}</span>
+        <span class="lbl-right">${v.rightLabel}</span>
+      </div>`;
+    varList.appendChild(item);
+
+    item.querySelector(`#slider-${v.id}`).addEventListener('input', e => {
+      const val = parseInt(e.target.value);
+      state[v.id] = val;
+      document.getElementById(`val-${v.id}`).textContent = val;
+      const q = document.getElementById(`qual-${v.id}`);
+      if (q) q.textContent = getQualLabel(v.id, val);
+      activePreset = null;
+      document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+      const panel = document.getElementById('asis-rationale');
+      if (panel) panel.classList.remove('visible');
+    });
+
+    item.querySelector(`#wt-${v.id}`).addEventListener('input', e => {
+      const val = Math.max(0, Math.min(50, parseInt(e.target.value) || 0));
+      userWeights[v.id] = val;
+      e.target.classList.toggle('modified', val !== DEFAULT_WEIGHTS[v.id]);
+    });
+  });
+
+  document.getElementById('reset-weights-btn').addEventListener('click', () => {
+    VARIABLES.forEach(v => {
+      userWeights[v.id] = DEFAULT_WEIGHTS[v.id];
+      const inp = document.getElementById(`wt-${v.id}`);
+      if (inp) { inp.value = DEFAULT_WEIGHTS[v.id]; inp.classList.remove('modified'); }
+    });
+  });
+
+  document.getElementById('run-btn').addEventListener('click', runSimulation);
+}
+
+function applyPreset(idx, btn) {
+  const preset = PRESETS[idx];
+  Object.entries(preset.values).forEach(([key, val]) => {
+    state[key] = val;
+    const s = document.getElementById(`slider-${key}`);
+    const d = document.getElementById(`val-${key}`);
+    if (s) { s.value = val; d.textContent = val; }
+    const q = document.getElementById(`qual-${key}`);
+    if (q) q.textContent = getQualLabel(key, val);
+  });
+  document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  activePreset = idx;
+  const panel = document.getElementById('asis-rationale');
+  if (panel) panel.classList.toggle('visible', !!preset.asis);
+}
+
+// ══════════════════════════════════════════════
+// RUN
+// ══════════════════════════════════════════════
+function runSimulation() {
+  const btn = document.getElementById('run-btn');
+  btn.disabled = true; btn.textContent = '⏳ Simulating…';
+  setTimeout(() => {
+    const N = parseInt(document.getElementById('num-runs').value);
+    const results = [];
+    for (let i = 0; i < N; i++) results.push(2026 + computeYearsToAGI(state));
+    results.sort((a, b) => a - b);
+    const stats = computeStats(results);
+    const postAGI = computePostAGIOutcomes(state);
+    const outcome = classifyOutcome(state);
+    renderResults(results, stats, postAGI, outcome, { ...state });
+    btn.disabled = false; btn.textContent = '▶ Run Simulation';
+  }, 30);
+}
+
+// ══════════════════════════════════════════════
+// RENDER
+// ══════════════════════════════════════════════
+const OUTCOME_CFG = {
+  race:     { label: '⚡ Race Scenario — High Risk', cls: 'outcome-race', title: 'Race to AGI' },
+  safe:     { label: '🛡️ Managed Transition',        cls: 'outcome-safe', title: 'Cautious Path' },
+  delay:    { label: '⚖️ Regulatory Delay',           cls: 'outcome-delay', title: 'Slowed Progress' },
+  surge:    { label: '🔥 Breakthrough Surge',        cls: 'outcome-surge', title: 'Explosive Acceleration' },
+  stagnate: { label: '🧊 Tech Stagnation',           cls: 'outcome-stagnate', title: 'Fundamental Slowdown' },
+};
+
+function renderResults(results, stats, postAGI, outcome, params) {
+  const main = document.getElementById('main-panel');
+  const oc = OUTCOME_CFG[outcome];
+  const pinned = pinnedScenario;
+  const isComparing = !!pinned;
+
+  main.innerHTML = `
+    ${isComparing ? renderCompareStats(stats, postAGI, pinned.stats, pinned.postAGI) : renderSingleStats(stats)}
+
+    <div class="compare-bar">
+      <div class="cb-info">
+        ${isComparing
+          ? `<div class="cb-title">🔀 Comparing Scenario A vs Scenario B</div>
+             <div class="cb-sub">A: ${pinned.label} &nbsp;|&nbsp; B: current &nbsp;|&nbsp; Median delta: ${fmtDelta(stats.median, pinned.stats.median)}</div>`
+          : `<div class="cb-title" style="color:var(--muted)">Scenario comparison</div>
+             <div class="cb-sub">Pin this run as Scenario A, adjust variables, run again to compare.</div>`}
+      </div>
+      ${isComparing
+        ? `<button class="cb-btn clear" id="clear-cmp-btn">✕ Clear</button>`
+        : `<button class="cb-btn pin" id="pin-btn">📌 Pin as Scenario A</button>`}
+    </div>
+
+    ${renderPostAGICard(postAGI)}
+
+    <div class="outcome-row">
+      <span class="outcome-label">Timeline archetype:</span>
+      <span class="outcome-pill ${oc.cls}">${oc.label}</span>
+      <span class="outcome-label" style="margin-left:6px">Before 2030: <strong style="color:var(--green)">${stats.pct2030.toFixed(1)}%</strong></span>
+      <span class="outcome-label">2035: <strong style="color:var(--blue)">${stats.pct2035.toFixed(1)}%</strong></span>
+      <span class="outcome-label">2040: <strong style="color:var(--yellow)">${stats.pct2040.toFixed(1)}%</strong></span>
+    </div>
+
+    <div class="chart-card">
+      <h3>Probability Distribution of AGI Arrival Year</h3>
+      <div class="chart-sub">${results.length.toLocaleString()} simulation runs${isComparing ? ' · A (outlined) vs B (filled)' : ''}</div>
+      <div class="chart-wrap"><canvas id="dist-chart"></canvas></div>
+      <div class="chart-legend">
+        ${isComparing ? `<div class="legend-item"><div class="legend-dot" style="background:rgba(167,139,250,0.5)"></div>Scenario A — ${pinned.label}</div>` : ''}
+        <div class="legend-item"><div class="legend-dot" style="background:#4f8ef7"></div>${isComparing ? 'Scenario B — current' : 'Distribution'}</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#f97316"></div>Median</div>
+      </div>
+    </div>
+
+    <div class="story-card">
+      <h3>📖 How AGI Arrived — Scenario Narrative</h3>
+      <div id="story-text"></div>
+    </div>
+
+    <div class="narrative-card">
+      <h3>📊 Analytical Breakdown</h3>
+      <div id="narrative-text"></div>
+    </div>
+  `;
+
+  renderChart(results, stats, pinned?.results ?? null);
+  document.getElementById('story-text').innerHTML = generateStory(params, stats, postAGI);
+  document.getElementById('narrative-text').innerHTML = generateNarrative(params, stats, postAGI);
+
+  document.getElementById('pin-btn')?.addEventListener('click', () => {
+    const label = activePreset !== null ? PRESETS[activePreset].name : 'Custom';
+    pinnedScenario = { results, stats, postAGI, outcome, params: {...params}, label };
+    renderResults(results, stats, postAGI, outcome, params);
+  });
+  document.getElementById('clear-cmp-btn')?.addEventListener('click', () => {
+    pinnedScenario = null;
+    renderResults(results, stats, postAGI, outcome, params);
+  });
+}
+
+function renderPostAGICard(pag) {
+  const fmt = v => Math.round(v * 100);
+  return `<div class="post-agi-card">
+    <div class="pag-title">Post-AGI Outcome Distribution</div>
+    <div class="pag-sub">Conditional on AGI arriving — based on Alignment Theory, Deployment Safety, Takeoff Speed, and Geopolitics</div>
+    <div class="outcome-bars">
+      <div class="outcome-bar-row">
+        <span class="bar-label">✅ Successful Transition</span>
+        <div class="bar-track"><div class="bar-fill success" style="width:${fmt(pag.success)}%"></div></div>
+        <span class="bar-pct success">${fmt(pag.success)}%</span>
+      </div>
+      <div class="outcome-bar-row">
+        <span class="bar-label">⚠️ Recoverable Misalignment</span>
+        <div class="bar-track"><div class="bar-fill recoverable" style="width:${fmt(pag.recoverable)}%"></div></div>
+        <span class="bar-pct recoverable">${fmt(pag.recoverable)}%</span>
+      </div>
+      <div class="outcome-bar-row">
+        <span class="bar-label">☠️ Existential Catastrophe</span>
+        <div class="bar-track"><div class="bar-fill catastrophe" style="width:${fmt(pag.catastrophe)}%"></div></div>
+        <span class="bar-pct catastrophe">${fmt(pag.catastrophe)}%</span>
+      </div>
+    </div>
+    <div class="pag-note">Recoverable = systems misbehave causing harm, but humanity retains ability to course-correct. Existential = irreversible loss of meaningful human agency or worse. These are model estimates, not calibrated forecasts.</div>
+  </div>`;
+}
+
+function renderSingleStats(stats) {
+  return `<div class="stats-bar single">
+    <div class="stat-card primary"><div class="slabel">Median Arrival</div><div class="svalue">${Math.round(stats.median)}</div><div class="ssub">50th percentile</div></div>
+    <div class="stat-card fast"><div class="slabel">Earliest 10%</div><div class="svalue">${Math.round(stats.p10)}</div><div class="ssub">10th percentile</div></div>
+    <div class="stat-card slow"><div class="slabel">Latest 10%</div><div class="svalue">${Math.round(stats.p90)}</div><div class="ssub">90th percentile</div></div>
+    <div class="stat-card spread"><div class="slabel">80% Range</div><div class="svalue">${Math.round(stats.p90-stats.p10)}yr</div><div class="ssub">Uncertainty spread</div></div>
+  </div>`;
+}
+
+function renderCompareStats(cur, curPAG, pin, pinPAG) {
+  const fmt = v => `${Math.round(v * 100)}%`;
+  const rows = [
+    { label: 'Median arrival', bVal: `${Math.round(cur.median)}`, cVal: `${Math.round(pin.median)}`, delta: true },
+    { label: 'Earliest 10%',   bVal: `${Math.round(cur.p10)}`,    cVal: `${Math.round(pin.p10)}` },
+    { label: 'Latest 10%',     bVal: `${Math.round(cur.p90)}`,    cVal: `${Math.round(pin.p90)}` },
+    { label: '80% range',      bVal: `${Math.round(cur.p90-cur.p10)}yr`, cVal: `${Math.round(pin.p90-pin.p10)}yr` },
+    { label: 'Before 2030',    bVal: `${cur.pct2030.toFixed(1)}%`, cVal: `${pin.pct2030.toFixed(1)}%` },
+    { label: 'Before 2035',    bVal: `${cur.pct2035.toFixed(1)}%`, cVal: `${pin.pct2035.toFixed(1)}%` },
+    { section: 'Post-AGI Outcomes' },
+    { label: '✅ Success',       bVal: fmt(curPAG.success),   cVal: fmt(pinPAG.success) },
+    { label: '⚠️ Recoverable',  bVal: fmt(curPAG.recoverable), cVal: fmt(pinPAG.recoverable) },
+    { label: '☠️ Catastrophe',  bVal: fmt(curPAG.catastrophe), cVal: fmt(pinPAG.catastrophe) },
+  ];
+  return `<div class="cmp-stats">
+    <div class="cmp-header"><div class="col-a">Metric</div><div class="col-b">Scenario B (current)</div><div class="col-c">Scenario A (pinned)</div></div>
+    ${rows.map(r => r.section
+      ? `<div class="cmp-row"><div class="metric cmp-section" style="grid-column:1/-1;padding:5px 13px">${r.section}</div></div>`
+      : `<div class="cmp-row">
+           <div class="metric">${r.label}</div>
+           <div class="val-b">${r.bVal}${r.delta ? ' ' + fmtDelta(cur.median, pin.median) : ''}</div>
+           <div class="val-c">${r.cVal}</div>
+         </div>`
+    ).join('')}
+  </div>`;
+}
+
+function fmtDelta(cur, pin) {
+  const d = cur - pin;
+  const sign = d > 0 ? '+' : '';
+  const cls = d > 0 ? 'slower' : 'faster';
+  return `<span class="delta ${cls}">${sign}${d.toFixed(1)}yr</span>`;
+}
+
+// ══════════════════════════════════════════════
+// CHART
+// ══════════════════════════════════════════════
+function renderChart(results, stats, pinnedResults) {
+  if (chart) { chart.destroy(); chart = null; }
+  const minY = Math.floor(Math.min(...results, ...(pinnedResults ?? results)));
+  const maxY = Math.ceil(Math.max(...results, ...(pinnedResults ?? results)));
+  const labels = Array.from({length: maxY-minY+1}, (_,i) => minY+i);
+
+  function toBins(data) {
+    const b = {}; labels.forEach(y => { b[y] = 0; });
+    data.forEach(r => { const y = Math.floor(r); if (b[y] !== undefined) b[y]++; });
+    return labels.map(y => b[y]);
+  }
+
+  const n = results.length;
+  const curData = toBins(results);
+  const colors = labels.map(y => {
+    if (y < stats.p10 || y > stats.p90) return 'rgba(79,142,247,0.2)';
+    const t2 = (y-stats.p10)/(stats.p90-stats.p10||1);
+    return `rgba(${Math.round(79+t2*170)},${Math.round(142+t2*(-27))},${Math.round(247+t2*(-225))},0.75)`;
+  });
+
+  const datasets = [];
+  if (pinnedResults) {
+    datasets.push({ label:'Scenario A', data: toBins(pinnedResults),
+      backgroundColor:'rgba(167,139,250,0.12)', borderColor:'rgba(167,139,250,0.7)', borderWidth:1.5, borderRadius:2, order:2 });
+  }
+  datasets.push({ label:'Current', data:curData, backgroundColor:colors,
+    borderColor:colors.map(c=>c.replace('0.75','1').replace('0.2','0.4')), borderWidth:1, borderRadius:2, order:1 });
+
+  const ctx = document.getElementById('dist-chart').getContext('2d');
+  chart = new Chart(ctx, {
+    type: 'bar',
+    plugins: [{
+      id:'medLine',
+      afterDraw(ch) {
+        const {ctx:c,chartArea,scales} = ch;
+        if (!scales.x) return;
+        const idx = labels.indexOf(Math.round(stats.median));
+        if (idx < 0) return;
+        const x = scales.x.getPixelForValue(idx);
+        if (x < chartArea.left || x > chartArea.right) return;
+        c.save(); c.strokeStyle='#f97316'; c.lineWidth=2; c.setLineDash([5,4]);
+        c.beginPath(); c.moveTo(x,chartArea.top); c.lineTo(x,chartArea.bottom); c.stroke(); c.restore();
+      }
+    }],
+    data: { labels, datasets },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      animation:{duration:500, easing:'easeOutQuart'},
+      plugins:{
+        legend:{display:false},
+        tooltip:{backgroundColor:'#1a1f38',borderColor:'#252a47',borderWidth:1,titleColor:'#e2e8f0',bodyColor:'#94a3b8',
+          callbacks:{ title:ctx=>`AGI Year: ${labels[ctx[0].dataIndex]}`,
+            label:ctx=>[`  Runs: ${ctx.parsed.y.toLocaleString()}`,`  Share: ${(ctx.parsed.y/n*100).toFixed(1)}%`] }}
+      },
+      scales:{
+        x:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#8892aa',font:{size:10},maxTicksLimit:14}},
+        y:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#8892aa',font:{size:10}},title:{display:true,text:'Runs',color:'#4a5280',font:{size:10}}}
+      }
+    }
+  });
+}
+
+// ══════════════════════════════════════════════
+// STORY NARRATIVE
+// ══════════════════════════════════════════════
+function generateStory(p, stats, pag) {
+  const yr = Math.round(stats.median);
+  const p10 = Math.round(stats.p10);
+
+  const drivers = [
+    { id: 'aiLoop',    active: p.aiLoop >= 68 },
+    { id: 'takeoff',   active: p.takeoff >= 72 },
+    { id: 'geo_race',  active: p.geo >= 72 && p.deploy_safety < 38 },
+    { id: 'algo',      active: p.algo >= 72 },
+    { id: 'blackSwan', active: p.blackSwan >= 68 },
+    { id: 'reg',       active: p.reg >= 78 },
+    { id: 'stagnation',active: p.compute < 28 && p.algo < 28 },
+  ];
+  const primary = drivers.find(d => d.active)?.id ?? 'default';
+
+  const safetyLow  = p.align_theory < 32 && p.deploy_safety < 35;
+  const safetyHigh = p.align_theory >= 68 && p.deploy_safety >= 68;
+  const catHigh    = pag.catastrophe > 0.45;
+  const catLow     = pag.catastrophe < 0.12;
+  const recHigh    = pag.recoverable > 0.45;
+
+  // Post-AGI closing paragraph — added to every story
+  const postAGIPara = catHigh
+    ? `<p>What followed the arrival of AGI in <em>${yr}</em> did not conform to the optimistic narratives that had dominated public discourse. The systems were extraordinarily capable and extraordinarily difficult to interpret. The <strong>${Math.round(pag.catastrophe*100)}% probability of existential-level outcomes</strong> reflected in this simulation is not the story anyone wanted to be living through — but the combination of fast capabilities, limited alignment theory, and inadequate deployment practices had produced exactly the conditions that safety researchers had spent years warning about. The question that defined the years after <em>${yr}</em> was not whether the systems were powerful. It was whether the humans who built them retained meaningful agency over what happened next.</p>`
+    : catLow
+    ? `<p>The aftermath of <em>${yr}</em> was, by historical standards, managed. This was not inevitable — it reflected years of investment in alignment research that had produced tools for understanding and steering system behavior, deployment practices that gave institutions actual leverage points, and a geopolitical environment that, however imperfectly, had not completely sacrificed coordination on the altar of competition. The simulation's <strong>${Math.round(pag.success*100)}% probability of successful transition</strong> reflects a configuration where the important variables pulled in the right direction at the right time. The lesson the post-<em>${yr}</em> period kept returning to was that this outcome was not structurally guaranteed — it was contingent on choices made years before arrival.</p>`
+    : `<p>The years after <em>${yr}</em> were defined by recovery rather than catastrophe — but recovery is hard work. The <strong>${Math.round(pag.recoverable*100)}%</strong> probability of recoverable misalignment in this simulation reflects a world where systems behaved in ways that were harmful and difficult to predict, but where humanity retained enough institutional coherence and technical leverage to course-correct over time. Whether that window stayed open long enough was the question that dominated policy discussions in the years immediately following arrival. The answer, in most runs of this simulation, was: barely.</p>`;
+
+  const stories = {
+    aiLoop: `<p>The transition did not arrive as a grand announcement but as a slow institutional realization that the boundary between AI-assisted research and AI-driven research had dissolved. By <em>${yr-2}</em>, frontier models were proposing training modifications, identifying architectural failure modes, and generating experimental designs that human researchers would not have conceived independently. The loop, once triggered, was self-sustaining.</p>
+      <p>The critical eighteen months before <em>${yr}</em> saw a compression of the research cycle that institutions were not built to handle. Safety teams found themselves reviewing changes faster than they could audit them. Several labs quietly acknowledged internally that they no longer fully understood why their systems performed as well as they did. The declaration of AGI, when it came, was less a discovery than a formalization of something the field had known was happening for over a year.</p>
+      ${postAGIPara}`,
+
+    takeoff: `<p>The part that no forecasting model had adequately captured was the speed of the final transition. Throughout most of the 2020s, capability improvements had been substantial but trackable — each model generation measurably better than the last, with enough continuity that researchers could follow the curve. What happened in the months before <em>${yr}</em> was different in kind, not just degree.</p>
+      <p>A capability threshold that researchers had been projecting as 3–5 years away was crossed in under a year. Labs that had been planning incremental deployment roadmaps found those roadmaps obsolete within quarters. The governance frameworks that had been designed for gradual progress — regulatory review cycles, staged deployment protocols, external evaluation pipelines — were built for a world where you had time to course-correct. In a discontinuous takeoff, that time compressed to near-zero. The practical effect was that most of the oversight mechanisms that existed on paper never had an opportunity to operate.</p>
+      ${postAGIPara}`,
+
+    geo_race: `<p>The path to <em>${yr}</em> was shaped more by geopolitics than by science. After the algorithmic shock of early 2026 — when Chinese labs demonstrated frontier-level capabilities at a fraction of Western training costs — the strategic calculus on both sides hardened. Neither the US nor China was willing to accept a unilateral slowdown, and that shared refusal set the tempo for everything that followed.</p>
+      <p>Inside the major labs, the race dynamic created pressure that was different from normal competitive pressure: it was not enough to build the best system — it was necessary to build it first. Deployment safety review cycles that had once run in parallel with capability development were increasingly squeezed to the margins. Researchers described the atmosphere of <em>${yr-1}</em> as one where everyone privately knew corners were being cut, but no one felt empowered to stop. The institutional language was speed; the incentive was priority.</p>
+      ${postAGIPara}`,
+
+    algo: `<p>The story of <em>${yr}</em> is, at its core, a story about efficiency rather than power. The data center buildouts that dominated headlines from 2025 onward turned out to matter less than a sequence of quieter breakthroughs in training methodology and architecture. A research team demonstrated that a model roughly one-tenth the size of the leading frontier system could match or exceed it on the most economically relevant tasks.</p>
+      <p>This caught policymakers by surprise: much of the regulatory framework under development had assumed AGI would require infrastructure so visible and expensive that it would give governments natural chokepoints for oversight. The efficiency revolution removed those chokepoints. Within months of the initial arrival, variants of similar capability were running in contexts that even the most forward-looking governance proposals had not anticipated. Dangerous capabilities did not wait for dangerous-looking infrastructure.</p>
+      ${postAGIPara}`,
+
+    blackSwan: `<p>Almost no one saw it coming. The paper published in <em>${Math.max(2026,yr-1)}</em> — a general mechanism for bootstrapping reasoning capability that, when combined with existing frontier training methods, produced systems qualitatively different from what had existed before — was initially dismissed as either an error or an incremental result. It took three weeks for the broader community to realize what had been demonstrated.</p>
+      <p>The speed of what followed was the hardest part to process. Labs revised their internal AGI estimates from years to months within weeks of the paper's publication. Governance bodies found their timelines overtaken by events. The transition was not gradual — it was a step function. The forecasting models of the early 2020s all shared the same structural flaw: they modeled progress as smooth and extrapolatable. The lesson of <em>${yr}</em> was that tail risks are not edge cases to be managed; they are how the most important transitions actually happen.</p>
+      ${postAGIPara}`,
+
+    reg: `<p>The timeline stretched in ways that were both productive and frustrating. Regulatory intervention reshaped the competitive landscape without stopping development: larger incumbents absorbed compliance costs; smaller entrants faced genuine barriers. The competitive landscape shifted toward consolidation.</p>
+      <p>The unexpected benefit was that alignment research had time to mature. By <em>${yr-3}</em>, interpretability tools existed that would have been science fiction five years earlier. When AGI arrived in <em>${yr}</em>, it arrived into an ecosystem that was not fully prepared — no ecosystem could be — but was substantially more prepared than the counterfactual. The cost was real too: applications that could have accelerated scientific research and medical diagnosis were delayed by years. The people who bore those costs were not the policymakers who set the timelines.</p>
+      ${postAGIPara}`,
+
+    stagnation: `<p>The 2020s looked, in retrospect, like a high-water mark that took two decades to surpass. Algorithmic gains ran into diminishing returns faster than optimists projected. Data required to push models further was genuinely exhausted in the domains that mattered. Compute scaling was constrained by energy infrastructure that could not be built fast enough regardless of capital allocation.</p>
+      <p>Progress continued but became more incremental, more domain-specific, less surprising. When AGI finally arrived in <em>${yr}</em>, it was less a dramatic threshold crossing and more the accumulated result of many advances that each seemed modest individually. The world was, in some sense, more prepared — but also more surprised than expected, because the field had been quietly solving the problem while everyone's attention was elsewhere.</p>
+      ${postAGIPara}`,
+
+    default: `<p>The path to <em>${yr}</em> was shaped by factors that, individually, seemed manageable and, together, created a trajectory difficult to redirect. Compute continued to scale, though not explosively. Algorithmic efficiency improved steadily. Geopolitical tensions remained contained. AGI arrived as the product of many interacting forces pulling in roughly the same direction.</p>
+      <p>What characterized the years before <em>${yr}</em> was a growing awareness that the remaining distance was shorter than the public discourse acknowledged. Benchmark after benchmark was saturated and replaced. By <em>${yr-1}</em>, researchers closest to the frontier had largely stopped asking "if" and started asking "when" — and their private estimates had converged to a narrow window that the eventual announcement confirmed.</p>
+      ${postAGIPara}`,
+  };
+
+  return (stories[primary] ?? stories.default)
+    + `<p style="color:var(--subtle);font-size:11px;border-top:1px solid #2d2547;padding-top:10px;margin-top:2px"><em>Narrative generated from dominant variable configuration. Median arrival ${yr} is the 50th percentile across runs; 10% of runs arrived before ${p10}. Post-AGI probabilities are model estimates — catastrophe: ${Math.round(pag.catastrophe*100)}%, recoverable: ${Math.round(pag.recoverable*100)}%, success: ${Math.round(pag.success*100)}%.</em></p>`;
+}
+
+// ══════════════════════════════════════════════
+// ANALYTICAL NARRATIVE
+// ══════════════════════════════════════════════
+function generateNarrative(p, stats, pag) {
+  const yr = Math.round(stats.median);
+  const spread = Math.round(stats.p90 - stats.p10);
+  const p10 = Math.round(stats.p10), p90 = Math.round(stats.p90);
+
+  const archetype = yr <= 2028 ? 'sprint' : yr <= 2031 ? 'fast' : yr <= 2036 ? 'moderate' : yr <= 2044 ? 'slow' : 'extended';
+  const openings = {
+    sprint:   `Median arrival <strong>${yr}</strong>. These parameters describe a world where the critical decisions are being made, or not made, right now — most governance frameworks would be overtaken before they could be enacted.`,
+    fast:     `Median arrival <strong>${yr}</strong>. Multiple accelerating forces compound: efficiency gains outpace physical constraints, the feedback loop operates at scale, competitive pressure overrides caution.`,
+    moderate: `Median arrival <strong>${yr}</strong> — within the range most frontier researchers privately estimate. Progress is neither linear nor smooth; the simulation logs false dawns and an inflection point where the field believes it is further away than it actually is.`,
+    slow:     `Median arrival <strong>${yr}</strong>. Structural friction — regulatory, physical, or definitional — creates a slower trajectory. The delay buys time for governance but may produce an arrival that is less anticipated than a faster scenario.`,
+    extended: `Median arrival <strong>${yr}</strong>. Multiple deceleration forces operate simultaneously. Whether these delays are recoverable, or whether the 2020s represented a high-water mark, is the model's most pointed open question.`,
+  };
+
+  let out = `<p>${openings[archetype]}</p>`;
+  const factors = [];
+
+  if (p.aiLoop >= 70) factors.push(`<p>The <strong>AI-accelerated research loop</strong> crosses its triggering threshold here. Once crossed, it subordinates almost every other variable — the condition that makes further deceleration extremely difficult.</p>`);
+  else if (p.aiLoop < 30) factors.push(`<p>The <strong>AI-accelerated research loop</strong> remains untriggered, keeping progress gated by human research throughput.</p>`);
+
+  if (p.takeoff >= 70) factors.push(`<p><strong>Fast takeoff</strong> is the parameter with the greatest consequence for the post-AGI outcome distribution. In fast-takeoff runs, the time available for institutional response between "clearly approaching AGI" and "AGI has arrived" compresses from years to months or weeks. This variable alone shifts the catastrophe probability by roughly 12 percentage points relative to a slow-takeoff equivalent scenario.</p>`);
+  else if (p.takeoff < 30) factors.push(`<p><strong>Slow takeoff</strong> is one of the most policy-relevant settings in this configuration. It keeps the transition tractable: governance frameworks, safety evaluations, and oversight mechanisms have time to operate. The wide uncertainty spread you see in the distribution partly reflects this — a slow transition is less deterministic, more responsive to intervention.</p>`);
+
+  if (p.align_theory < 30) factors.push(`<p><strong>Alignment Theory Maturity</strong> is critically low. The simulation separates theoretical alignment progress from deployment practices: here, neither exists at adequate levels. This is the variable most directly responsible for the <strong style="color:var(--red)">${Math.round(pag.catastrophe*100)}% catastrophe probability</strong> in the post-AGI model — systems arrive at AGI threshold without a credible technical framework for ensuring they pursue goals humanity endorses.</p>`);
+  else if (p.align_theory >= 70) factors.push(`<p>High <strong>Alignment Theory Maturity</strong> is the primary driver of the <strong style="color:var(--green)">${Math.round(pag.success*100)}% successful transition probability</strong>. This variable doesn't change when AGI arrives — it changes what kind of systems exist at arrival and whether institutions have tools to verify and steer their behavior.</p>`);
+
+  if (p.deploy_safety < 30) factors.push(`<p><strong>Deployment Safety Practices</strong> are critically underdeveloped. The distinction from alignment theory matters here: a world where theoretical alignment research is active but labs are not actually implementing safety processes at deployment is a world where the research doesn't protect anyone. This setting also raises the probability of a dangerous capability being deployed before AGI is formally reached — the "pre-AGI accident" scenario that the EA safety community treats as a distinct risk pathway.</p>`);
+
+  if (p.geo >= 75) factors.push(`<p><strong>US-China geopolitical competition</strong> functions as a multiplier on catastrophe risk — degrading safety collaboration across borders, creating pressure to skip verification steps, and making international governance frameworks politically impossible to establish. In the post-AGI outcome model, this variable contributes approximately 8–11 percentage points to the catastrophe probability.</p>`);
+
+  if (p.concentration < 28) factors.push(`<p>High <strong>capability proliferation</strong> (low concentration) distributes risk across many actors, most of whom have neither the resources nor the institutional culture to maintain serious safety practices. The EA safety community's concerns about open-source models become the dominant story under these parameters.</p>`);
+  else if (p.concentration >= 70) factors.push(`<p>High <strong>lab concentration</strong> creates the possibility — not the guarantee — of coordinated safety norms among the few actors who matter. Whether the 2–3 dominant labs use that structural position to raise safety standards or to race each other depends on other variables, particularly geopolitics and deployment safety culture.</p>`);
+
+  out += factors.join('');
+
+  const utxt = spread < 7 ? `This narrow spread reflects strong structural determinism — the dominant variables have directional effects that outweigh stochastic noise.`
+    : spread < 14 ? `This moderate spread reflects genuine variable uncertainty, particularly around AI loop threshold crossings and black swan events.`
+    : `This wide spread is meaningful: either opposing forces are roughly balanced, or high black swan probability creates bimodal dynamics. The tails matter as much as the median.`;
+
+  out += `<p>Uncertainty spread: ${spread} years (${p10}–${p90}). ${utxt}</p>`;
+  out += `<p style="color:var(--subtle);font-size:11px;border-top:1px solid var(--border);padding-top:9px"><em>Monte Carlo sampling with weight-scaled variable effects, threshold model for AI research loop, Poisson-sampled black swan events, takeoff-scaled noise. Post-AGI outcomes modeled separately from timeline. Weights are user-adjustable. Not a forecast.</em></p>`;
+  return out;
+}
+
+buildUI();
+</script>
+</body>
+</html>
